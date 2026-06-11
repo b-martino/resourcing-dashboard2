@@ -720,8 +720,8 @@
     
   </div>
   <div class="header-meta">
-    <span id="live-indicator" style="display:flex;align-items:center;gap:4px"><span class="live-dot"></span> Live</span>
-    <span id="task-count">181 tasks loaded</span>
+    <span id="live-indicator" style="display:flex;align-items:center;gap:4px"><span class="live-dot"></span> Loading...</span>
+    <span id="task-count">Loading...</span>
     <span id="last-refresh">—</span>
   </div>
 </div>
@@ -876,11 +876,9 @@
 <script>
 // =====================================================================
 // DATA — Live from Smartsheet via Power Automate HTTP trigger
-// Token is stored securely in Power Automate — nothing sensitive in this file
-// New owners, projects, and functions appear automatically on each page load
+// Token stored securely in Power Automate — nothing sensitive in this file
+// New owners, projects, and functions populate automatically on each load
 // =====================================================================
-
-// !! STEP 1: Paste your Power Automate HTTP trigger URL below after setup !!
 const FLOW_URL = 'https://default1b69413d786a4434839141df54b5fb.bc.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/4ecb0e8a0c7e42a2ab6b7d60e960c373/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=9trpW3C9HrlYMwZbpbiW1fY0nrG0UzKHRQe5bhov6r8';
 
 let RAW_DATA = [];
@@ -890,61 +888,39 @@ let dataLoaded = false;
 async function loadData() {
   const overlay = document.getElementById('loading-overlay');
   if (overlay) overlay.style.display = 'flex';
-
   try {
     const res = await fetch(FLOW_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'getData' })
     });
-
-    if (!res.ok) throw new Error(`Flow returned HTTP ${res.status} — check your Power Automate trigger URL.`);
-
+    if (!res.ok) throw new Error(`Flow returned HTTP ${res.status}`);
     const payload = await res.json();
     RAW_DATA = payload.rows || [];
-
-    if (RAW_DATA.length === 0) throw new Error('No rows returned from Smartsheet. Check the flow is running correctly.');
-
+    if (RAW_DATA.length === 0) throw new Error('No rows returned from Smartsheet.');
     const today = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
     document.getElementById('task-count').textContent = RAW_DATA.length + ' tasks loaded';
     document.getElementById('last-refresh').textContent = 'Refreshed ' + today;
     const ind = document.getElementById('live-indicator');
     if (ind) ind.innerHTML = '<span class="live-dot"></span> Live';
     if (overlay) overlay.style.display = 'none';
-
-    // Repopulate project filter dynamically from live data
     populateProjectFilter();
     applyFilters();
     dataLoaded = true;
-
   } catch (err) {
-    if (overlay) {
-      overlay.innerHTML = `
-        <div style="text-align:center;color:white;padding:40px">
-          <div style="font-size:36px;margin-bottom:12px">⚠</div>
-          <div style="font-family:'Arial Black',sans-serif;font-size:13px;font-weight:900;
-            text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Unable to Load Data</div>
-          <div style="font-size:12px;color:#B4ACA6;max-width:340px;margin:0 auto 12px">${err.message}</div>
-          <button onclick="loadData()" style="background:#D95E16;color:white;border:none;padding:8px 20px;
-            border-radius:3px;cursor:pointer;font-family:'Barlow',sans-serif;font-weight:600;
-            font-size:12px;text-transform:uppercase;margin-top:8px">↻ Retry</button>
-        </div>`;
-      overlay.style.display = 'flex';
-    }
+    if (overlay) overlay.innerHTML = `
+      <div style="text-align:center;color:white;padding:40px">
+        <div style="font-size:36px;margin-bottom:12px">⚠</div>
+        <div style="font-family:'Arial Black',sans-serif;font-size:13px;font-weight:900;
+          text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Unable to Load Data</div>
+        <div style="font-size:12px;color:#B4ACA6;max-width:340px;margin:0 auto 12px">${err.message}</div>
+        <button onclick="loadData()" style="background:#D95E16;color:white;border:none;padding:8px 20px;
+          border-radius:3px;cursor:pointer;font-weight:600;font-size:12px;text-transform:uppercase;
+          margin-top:8px">↻ Retry</button>
+      </div>`;
   }
 }
 
-
-
-
-// =====================================================================
-// CORE TEAM — explicitly resourced in sheet per project
-// =====================================================================
-const CORE_TEAM = ['Brandon Martin', 'Bret Hubber', 'Trent Sauer', 'Vito Kuang'];
-
-// =====================================================================
-// STATE
-// =====================================================================
 let currentView = 'person';
 let filteredData = [...RAW_DATA];
 let expandedData = [];
@@ -1019,15 +995,13 @@ function getGroupKey(task) {
 // INIT
 // =====================================================================
 window.onload = function() {
-  populateProjectFilter();
-  applyFilters();
   readURLParams();
+  loadData();
 };
 
 function populateProjectFilter() {
   const projects = [...new Set(RAW_DATA.map(r => r.project))].filter(Boolean).sort();
   const sel = document.getElementById('project-filter');
-  // Clear all options except the first "All Projects" option
   while (sel.options.length > 1) sel.remove(1);
   projects.forEach(p => {
     const opt = document.createElement('option');
@@ -1360,356 +1334,6 @@ const PALETTE = [
   '#00838F','#E65100','#37474F','#558B2F','#AD1457',
   '#4527A0','#00695C','#F9A825','#4E342E'
 ];
-
-function renderMonthlyChart() {
-  const nMonths = parseInt(document.getElementById('month-count').value) || 9;
-  const months = getMonthsRange(nMonths);
-
-  // Use expandedData so "All" tasks hit core team
-  const source = expandedData.length > 0 ? expandedData : filteredData;
-
-  // Gather dimension keys
-  const dimFn = r => monthlyView === 'function' ? (r.fn || 'No Function') : r.project;
-  const allDims = [...new Set(source.map(dimFn))].sort();
-
-  // Build month × dim FTE totals
-  // For person view: sum FTE across all people per dim
-  // For function/project view: use dimFn
-  const monthLabels = months.map(m => m.toLocaleDateString('en-US', {month:'short', year:'2-digit'}));
-
-  const dimData = {}; // dim -> [fte per month]
-  allDims.forEach(d => { dimData[d] = new Array(nMonths).fill(0); });
-
-  source.forEach(r => {
-    const dim = dimFn(r);
-    months.forEach((ms, mi) => {
-      dimData[dim][mi] += taskFteForMonth(r, ms);
-    });
-  });
-
-  // Filter out dims with effectively 0 FTE across all months
-  const activeDims = allDims.filter(d => dimData[d].some(v => v > 0.01));
-
-  const canvas = document.getElementById('monthly-chart');
-  const ctx = canvas.getContext('2d');
-  
-  // Responsive sizing
-  const W = canvas.parentElement.clientWidth - 40;
-  const H = 260;
-  canvas.width = W;
-  canvas.height = H;
-
-  const PAD = {top: 20, right: 20, bottom: 40, left: 52};
-  const chartW = W - PAD.left - PAD.right;
-  const chartH = H - PAD.top - PAD.bottom;
-
-  ctx.clearRect(0, 0, W, H);
-
-  // Compute max total FTE per month
-  const monthTotals = months.map((_, mi) =>
-    activeDims.reduce((s, d) => s + dimData[d][mi], 0)
-  );
-  const maxFte = Math.max(...monthTotals, 0.5);
-  const yMax = Math.ceil(maxFte * 1.15 * 10) / 10;
-
-  const barW = Math.min(chartW / nMonths * 0.7, 60);
-  const gap = chartW / nMonths;
-
-  // Grid lines
-  const gridSteps = 5;
-  ctx.strokeStyle = '#E8E4DF';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([3,3]);
-  for (let i = 0; i <= gridSteps; i++) {
-    const y = PAD.top + chartH - (i / gridSteps) * chartH;
-    ctx.beginPath();
-    ctx.moveTo(PAD.left, y);
-    ctx.lineTo(PAD.left + chartW, y);
-    ctx.stroke();
-    // Y labels
-    ctx.fillStyle = '#B4ACA6';
-    ctx.font = '10px Barlow, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText((yMax * i / gridSteps).toFixed(1), PAD.left - 6, y + 3);
-  }
-  ctx.setLineDash([]);
-
-  // Overload line at y=1.0 FTE (per person) — shown as reference if in person view... 
-  // In aggregate mode show at team total. Skip for clarity in stacked.
-  
-  // Axis labels
-  ctx.fillStyle = '#25282A';
-  ctx.font = '10px Barlow, sans-serif';
-  ctx.textAlign = 'center';
-  months.forEach((m, mi) => {
-    const x = PAD.left + gap * mi + gap / 2;
-    ctx.fillText(monthLabels[mi], x, H - 8);
-  });
-
-  // Y axis title
-  ctx.save();
-  ctx.translate(12, PAD.top + chartH / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillStyle = '#685C53';
-  ctx.font = '10px Barlow, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('FTE', 0, 0);
-  ctx.restore();
-
-  // Stacked bars
-  months.forEach((m, mi) => {
-    const x = PAD.left + gap * mi + gap / 2 - barW / 2;
-    let yBase = PAD.top + chartH;
-
-    activeDims.forEach((dim, di) => {
-      const fte = dimData[dim][mi];
-      if (fte < 0.001) return;
-      const barH = (fte / yMax) * chartH;
-      ctx.fillStyle = PALETTE[di % PALETTE.length];
-      ctx.fillRect(x, yBase - barH, barW, barH);
-      yBase -= barH;
-
-      // Label inside bar if tall enough
-      if (barH > 14) {
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
-        ctx.font = 'bold 9px Barlow, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(fte.toFixed(1), x + barW/2, yBase + barH/2 + 3);
-      }
-    });
-
-    // Total label on top
-    const total = monthTotals[mi];
-    if (total > 0.01) {
-      const topY = PAD.top + chartH - (total / yMax) * chartH - 4;
-      ctx.fillStyle = '#25282A';
-      ctx.font = 'bold 10px Arial Black, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(total.toFixed(1), x + barW/2, topY);
-    }
-  });
-
-  // Legend
-  const legendEl = document.getElementById('monthly-legend');
-  legendEl.innerHTML = activeDims.map((dim, di) => `
-    <span style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;padding:2px 6px;border-radius:2px;border:1px solid #E8E4DF" 
-      title="Click to filter" onclick="filterToDim('${dim.replace(/'/g,"\'")}')">
-      <span style="width:10px;height:10px;border-radius:2px;background:${PALETTE[di % PALETTE.length]};flex-shrink:0"></span>
-      ${dim}
-    </span>`).join('');
-}
-
-function filterToDim(dim) {
-  if (monthlyView === 'project') {
-    document.getElementById('project-filter').value = dim;
-  }
-  applyFilters();
-}
-
-// =====================================================================
-// OVERLOAD DETECTION
-// =====================================================================
-function renderOverloads() {
-  const weeks = getWeekStarts();
-  const overloadedPeople = {};
-
-  const groups = {};
-  expandedData.forEach(r => {
-    const key = r.owner || '(Unassigned)';
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(r);
-  });
-
-  Object.entries(groups).forEach(([owner, tasks]) => {
-    let overloadWeeks = 0;
-    weeks.forEach(ws => {
-      const totalFte = tasks.reduce((sum, t) => taskOverlapsWeek(t, ws) ? sum + t.fte : sum, 0);
-      if (totalFte > OVERLOAD_THRESHOLD) overloadWeeks++;
-    });
-    if (overloadWeeks >= 2) { // >1 week threshold
-      overloadedPeople[owner] = overloadWeeks;
-    }
-  });
-
-  const entries = Object.entries(overloadedPeople);
-  const section = document.getElementById('overload-section');
-  const list = document.getElementById('overload-list');
-
-  if (entries.length === 0) {
-    section.style.display = 'none';
-    return;
-  }
-
-  section.style.display = 'block';
-  list.innerHTML = entries.map(([owner, weeks]) =>
-    `<div class="overload-item">⚠ <strong>${owner}</strong> is over 1.0 FTE for <strong>${weeks} week${weeks>1?'s':''}</strong> in the displayed range</div>`
-  ).join('');
-}
-
-// =====================================================================
-// DRILL DOWN
-// =====================================================================
-function drillDown(key, viewType) {
-  let tasks;
-  if (viewType === 'person') tasks = expandedData.filter(r => r.owner === key);
-  else if (viewType === 'function') tasks = filteredData.filter(r => r.fn === key);
-  else tasks = filteredData.filter(r => r.project === key);
-
-  showDrill(key, tasks, null);
-}
-
-function drillDownWeek(key, viewType, weekIso) {
-  const weekStart = new Date(weekIso);
-  let tasks;
-  if (viewType === 'person') tasks = expandedData.filter(r => r.owner === key);
-  else if (viewType === 'function') tasks = filteredData.filter(r => r.fn === key);
-  else tasks = filteredData.filter(r => r.project === key);
-
-  const weekTasks = tasks.filter(t => taskOverlapsWeek(t, weekStart));
-  showDrill(`${key} — ${fmtWeek(weekStart)}`, weekTasks, weekStart);
-}
-
-function showDrill(title, tasks, weekFilter) {
-  const sidebar = document.getElementById('drill-sidebar');
-  const content = document.getElementById('drill-content');
-  document.getElementById('drill-title').textContent = title;
-
-  const statusOrder = {'In Progress':0,'Not Started':1,'Complete':2};
-  const sorted = [...tasks].sort((a,b) =>
-    (statusOrder[a.status]??3) - (statusOrder[b.status]??3)
-  );
-
-  let html = '';
-  if (sorted.length === 0) {
-    html = '<div class="no-data">No tasks found</div>';
-  } else {
-    const totalFte = tasks.reduce((s,t) => s + t.fte, 0);
-    html += `<div style="padding:10px 16px;background:var(--offwhite);border-bottom:1px solid #E8E4DF;font-size:11px;color:var(--charred);display:flex;gap:16px">
-      <span><strong style="color:var(--soot)">${tasks.length}</strong> tasks</span>
-      <span>Total FTE: <strong style="color:var(--soot)">${totalFte.toFixed(2)}</strong></span>
-    </div>`;
-
-    sorted.forEach(t => {
-      const statusCls = t.status === 'Complete' ? 'status-complete' : t.status === 'In Progress' ? 'status-inprogress' : 'status-notstarted';
-      const badgeCls = t.status === 'Complete' ? 'complete' : t.status === 'In Progress' ? 'inprogress' : 'notstarted';
-      html += `<div class="task-card ${statusCls}">
-        <div class="task-card-title">${t.task}</div>
-        <div class="task-card-meta">
-          <span><span class="status-badge ${badgeCls}">${t.status}</span></span>
-          <span>📁 ${t.project}</span>
-          ${t.fn ? `<span>🏷 ${t.fn}</span>` : ''}
-          ${t.start ? `<span>📅 ${t.start}${t.finish && t.finish !== t.start ? ' → '+t.finish : ''}</span>` : ''}
-          <span class="fte-pill">${t.fte} FTE</span>
-        </div>
-      </div>`;
-    });
-  }
-
-  content.innerHTML = html;
-  sidebar.classList.remove('hidden');
-}
-
-function closeDrill() {
-  document.getElementById('drill-sidebar').classList.add('hidden');
-}
-
-// =====================================================================
-// CHANGE TRACKING
-// =====================================================================
-function openChangeModal() {
-  document.getElementById('change-modal').classList.add('open');
-  renderChanges();
-}
-function closeChangeModal() {
-  document.getElementById('change-modal').classList.remove('open');
-}
-
-function renderChanges() {
-  const days = parseInt(document.getElementById('change-period').value);
-  const relevant = CHANGE_LOG.filter(c => { const dAgo = Math.round((new Date() - new Date(c.date)) / 86400000); return dAgo <= days; });
-
-  if (relevant.length === 0) {
-    document.getElementById('change-list').innerHTML = '<div class="no-data">No changes in this period</div>';
-    return;
-  }
-
-  const iconMap = {added:'＋',moved:'↕',reassigned:'👤'};
-  const html = relevant.map(c => {
-    let text = '';
-    if (c.type === 'added') text = `<strong>${c.task}</strong> added to <strong>${c.project}</strong> — assigned to ${c.owner}`;
-    else if (c.type === 'moved') {
-      if (c.oldFinish) text = `<strong>${c.task}</strong> (${c.owner}) finish moved <strong>${c.oldFinish}</strong> → <strong>${c.newFinish}</strong>`;
-      else text = `<strong>${c.task}</strong> (${c.owner}) start moved <strong>${c.oldStart}</strong> → <strong>${c.newStart}</strong>`;
-    }
-    else if (c.type === 'reassigned') text = `<strong>${c.task}</strong> reassigned from <strong>${c.oldOwner}</strong> → <strong>${c.newOwner}</strong>`;
-    const daysAgo = Math.round((new Date() - new Date(c.date || new Date())) / 86400000);
-    const daysLabel = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`;
-
-    return `<div class="change-item">
-      <div class="change-icon ${c.type}">${iconMap[c.type]}</div>
-      <div class="change-text">${text}</div>
-      <div class="change-time">${daysLabel}</div>
-    </div>`;
-  }).join('');
-
-  document.getElementById('change-list').innerHTML = html;
-}
-
-// =====================================================================
-// DEEP LINK
-// =====================================================================
-function copyDeepLink() {
-  const proj = document.getElementById('project-filter').value;
-  const state = document.getElementById('state-filter').value;
-  const status = document.getElementById('status-filter').value;
-  const params = new URLSearchParams();
-  if (currentView !== 'person') params.set('view', currentView);
-  if (proj) params.set('project', proj);
-  if (state) params.set('state', state);
-  if (status) params.set('status', status);
-  if (weekOffset !== 0) params.set('weeks', weekOffset);
-  const url = window.location.origin + window.location.pathname + (params.toString() ? '?'+params.toString() : '');
-  navigator.clipboard.writeText(url).then(() => showToast('Link copied to clipboard'));
-}
-
-// =====================================================================
-// EXPORT CSV
-// =====================================================================
-function exportCSV() {
-  const headers = ['Project','Task','Owner','Function','Status','State','Start','Finish','FTE'];
-  const rows = filteredData.map(r =>
-    [r.project, r.task, r.owner, r.fn, r.status, r.state, r.start, r.finish, r.fte]
-    .map(v => `"${(v??'').toString().replace(/"/g,'""')}"`)
-    .join(',')
-  );
-  const csv = [headers.join(','), ...rows].join('\n');
-  const blob = new Blob([csv], {type:'text/csv'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `resourcing-export-${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  showToast('CSV exported');
-}
-
-// =====================================================================
-// TOAST
-// =====================================================================
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2500);
-}
-
-// Set last refresh
-// last-refresh set by loadData()
-</script>
-</body>
-</html>// DATA — Embedded inline from Smartsheet (refreshed 2026-06-09)
-// No API token — data is baked in. Safe for public hosting.
-// To update: ask Claude to regenerate and re-upload to GitHub
-// =====================================================================
-
 
 function renderMonthlyChart() {
   const nMonths = parseInt(document.getElementById('month-count').value) || 9;
